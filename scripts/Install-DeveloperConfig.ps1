@@ -9,7 +9,7 @@
     or an Administrator shell for file symlinks.
 
     On machines where symlinks are blocked (e.g. by Group Policy), the script
-    falls back to copying files and prints a reminder to re-run setup after
+    falls back to copying files and prints a reminder to re-run this script after
     each git pull.
 
     Skills are sourced from this repository's skills/ directory. Claude receives
@@ -22,47 +22,29 @@
     Absolute path to the ops-developer-config repository root.
     Defaults to the parent directory of this script.
 
+.PARAMETER InstallScheduledTask
+    Register or update a per-user scheduled task that runs this script at user
+    logon. This does not require local administrator privileges.
+
+.PARAMETER TaskName
+    Name of the per-user scheduled task created by -InstallScheduledTask.
+
 .EXAMPLE
-    .\setup.ps1
-    .\setup.ps1 -Repo "C:\Local Files\Repositories\ops-developer-config"
+    .\Install-DeveloperConfig.ps1
+    .\Install-DeveloperConfig.ps1 -Repo "C:\Local Files\Repositories\ops-developer-config"
+    .\Install-DeveloperConfig.ps1 -InstallScheduledTask
 #>
 
+[CmdletBinding(SupportsShouldProcess = $true)]
 param (
-    [string]$Repo = (Resolve-Path "$PSScriptRoot\..").Path
+    [string]$Repo = (Resolve-Path "$PSScriptRoot\..").Path,
+    [switch]$InstallScheduledTask,
+    [string]$TaskName = "Install Developer Config"
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $script:copyFallback = 0
-
-# -- Preflight: can we create file symlinks? -------------------------------
-
-$canSymlink = $false
-$testTarget = [System.IO.Path]::GetTempFileName()
-$testLink = $testTarget + ".lnk"
-try {
-    New-Item -ItemType SymbolicLink -Path $testLink -Value $testTarget -ErrorAction Stop | Out-Null
-    Remove-Item $testLink -Force -ErrorAction SilentlyContinue
-    $canSymlink = $true
-} catch { }
-finally {
-    Remove-Item $testTarget -Force -ErrorAction SilentlyContinue
-}
-
-if (-not $canSymlink) {
-    Write-Host @"
-
-  WARNING: File symlinks are not available on this machine.
-  Cause:   Group Policy likely overrides Developer Mode (common on domain-joined
-           corporate machines). Admin shells are unaffected.
-
-  Falling back to file copies for all symlink targets.
-  After each 'git pull', re-run this script to refresh the copies.
-
-  To get true symlinks: re-run from an Administrator shell.
-
-"@ -ForegroundColor Yellow
-}
 
 # -- Helpers ----------------------------------------------------------------
 
@@ -115,7 +97,7 @@ function New-Symlink {
     $script:copyFallback++
 }
 
-function Normalize-PathForCompare {
+function ConvertTo-ComparablePath {
     param([string]$Path)
     try {
         return ([System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path)).TrimEnd("\")
@@ -130,10 +112,10 @@ function Test-ReparseTarget {
     if (-not $item) { return $false }
     if (-not ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) { return $false }
 
-    $expected = Normalize-PathForCompare $ExpectedTarget
+    $expected = ConvertTo-ComparablePath $ExpectedTarget
     foreach ($target in @($item.Target)) {
         if (-not $target) { continue }
-        if ((Normalize-PathForCompare $target) -ieq $expected) {
+        if ((ConvertTo-ComparablePath $target) -ieq $expected) {
             return $true
         }
     }
@@ -190,6 +172,111 @@ function Remove-LegacyAgentsSkillsJunction {
     }
 
     Write-Host "  [skip] $Link exists and is not the legacy repo junction" -ForegroundColor DarkGray
+}
+
+function ConvertTo-TaskArgument {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Value
+    )
+
+    return '"' + ($Value -replace '"', '\"') + '"'
+}
+
+function Register-UserLogonTask {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ScriptPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RepoPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $powerShellPath = Join-Path -Path $PSHOME -ChildPath "powershell.exe"
+    $arguments = @(
+        "-NoProfile"
+        "-ExecutionPolicy"
+        "Bypass"
+        "-File"
+        (ConvertTo-TaskArgument -Value $ScriptPath)
+        "-Repo"
+        (ConvertTo-TaskArgument -Value $RepoPath)
+    )
+
+    $action = New-ScheduledTaskAction -Execute $powerShellPath -Argument ($arguments -join " ")
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+    $settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 30) `
+        -MultipleInstances IgnoreNew
+
+    if ($PSCmdlet.ShouldProcess($Name, "Register per-user scheduled task")) {
+        Register-ScheduledTask `
+            -TaskName $Name `
+            -Action $action `
+            -Trigger $trigger `
+            -Principal $principal `
+            -Settings $settings `
+            -Description "Runs $ScriptPath at user logon." `
+            -Force | Out-Null
+
+        return $true
+    }
+
+    return $false
+}
+
+if ($InstallScheduledTask) {
+    $scriptPath = (Resolve-Path -LiteralPath $PSCommandPath -ErrorAction Stop).Path
+    $repoPath = (Resolve-Path -LiteralPath $Repo -ErrorAction Stop).Path
+    $taskRegistered = Register-UserLogonTask `
+        -ScriptPath $scriptPath `
+        -RepoPath $repoPath `
+        -Name $TaskName
+
+    if ($taskRegistered) {
+        Write-Host "Scheduled task registered: $TaskName"
+    } else {
+        Write-Host "Scheduled task registration skipped: $TaskName"
+    }
+    Write-Host "Script path: $scriptPath"
+    Write-Host "Repo path: $repoPath"
+    return
+}
+
+# -- Preflight: can we create file symlinks? -------------------------------
+
+$canSymlink = $false
+$testTarget = [System.IO.Path]::GetTempFileName()
+$testLink = $testTarget + ".lnk"
+try {
+    New-Item -ItemType SymbolicLink -Path $testLink -Value $testTarget -ErrorAction Stop | Out-Null
+    Remove-Item $testLink -Force -ErrorAction SilentlyContinue
+    $canSymlink = $true
+} catch { }
+finally {
+    Remove-Item $testTarget -Force -ErrorAction SilentlyContinue
+}
+
+if (-not $canSymlink) {
+    Write-Host @"
+
+  WARNING: File symlinks are not available on this machine.
+  Cause:   Group Policy likely overrides Developer Mode (common on domain-joined
+           corporate machines). Admin shells are unaffected.
+
+  Falling back to file copies for all symlink targets.
+  After each 'git pull', re-run this script to refresh the copies.
+
+  To get true symlinks: re-run from an Administrator shell.
+
+"@ -ForegroundColor Yellow
 }
 
 # -- Skills (repo source of truth) -----------------------------------------
@@ -260,7 +347,7 @@ Write-Host @"
 # -- Done ------------------------------------------------------------------
 
 if ($script:copyFallback -gt 0) {
-    Write-Host "Done. $($script:copyFallback) file(s) copied (not linked) -- re-run setup after git pull.`n" -ForegroundColor Cyan
+    Write-Host "Done. $($script:copyFallback) file(s) copied (not linked) -- re-run this script after git pull.`n" -ForegroundColor Cyan
 } else {
     Write-Host "Done. All links created.`n" -ForegroundColor Green
 }
