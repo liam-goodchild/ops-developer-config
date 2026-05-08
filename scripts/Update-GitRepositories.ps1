@@ -11,6 +11,12 @@
     The script can also register a per-user scheduled task that runs at user
     logon. This does not require local administrator privileges.
 
+    To restrict which repositories are pulled, create a machine-specific include
+    list at scripts\git-repositories\<COMPUTERNAME>.txt in this repository. Each
+    line is a path to include (directory or exact repo); lines beginning with #
+    are treated as comments. The script discovers the file automatically by
+    hostname. Use -ConfigPath to override the location explicitly.
+
 .PARAMETER RepositoriesRoot
     Root directory below which Git repositories are discovered.
     Defaults to:
@@ -18,9 +24,17 @@
       2. C:\Local Files\Repositories, when it exists
       3. the current user's Documents\Repositories path
 
+.PARAMETER ConfigPath
+    Path to a plain-text include list. Each non-blank, non-comment line is a
+    directory or repository path to include. Repositories whose path does not
+    start with any listed path are skipped. When omitted, the script looks for
+    config\git-repositories\<COMPUTERNAME>.txt relative to the repository root;
+    if that file is absent, all discovered repositories are pulled.
+
 .PARAMETER InstallScheduledTask
     Register or update a per-user scheduled task that runs this script at user
     logon. The task stores the resolved -RepositoriesRoot path in its action.
+    Config file discovery is hostname-based, so no extra argument is needed.
 
 .PARAMETER TaskName
     Name of the scheduled task created by -InstallScheduledTask.
@@ -42,11 +56,15 @@
 
 .EXAMPLE
     .\Update-GitRepositories.ps1 -InstallScheduledTask -RepositoriesRoot "D:\Repos"
+
+.EXAMPLE
+    .\Update-GitRepositories.ps1 -ConfigPath "C:\config\my-repos.txt"
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
 param (
     [string]$RepositoriesRoot,
+    [string]$ConfigPath,
     [switch]$InstallScheduledTask,
     [string]$TaskName = "Git Pull All Repositories",
     [string]$LogPath,
@@ -97,19 +115,50 @@ function ConvertTo-TaskArgument {
     return '"' + ($Value -replace '"', '\"') + '"'
 }
 
+function Get-IncludeList {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $null
+    }
+
+    $entries = Get-Content -LiteralPath $Path | ForEach-Object {
+        $trimmed = $_.Trim()
+        if (-not [string]::IsNullOrWhiteSpace($trimmed) -and -not $trimmed.StartsWith('#')) {
+            $trimmed
+        }
+    }
+
+    return @($entries | Where-Object { $_ })
+}
+
 function Get-GitRepositories {
     param (
         [Parameter(Mandatory = $true)]
-        [string]$Root
+        [string]$Root,
+
+        [string[]]$IncludeList
     )
 
     $gitMarkers = Get-ChildItem -LiteralPath $Root -Force -Recurse -Filter ".git" -ErrorAction SilentlyContinue
     foreach ($gitMarker in $gitMarkers) {
-        $repo = $gitMarker.Directory
+        $repo = if ($gitMarker.PSIsContainer) { $gitMarker.Parent } else { $gitMarker.Directory }
         if (-not $repo) { continue }
 
-        # Avoid returning nested repositories twice when a .git directory is
-        # discovered below another repository's .git internals.
+        if ($IncludeList -and $IncludeList.Count -gt 0) {
+            $included = $false
+            foreach ($entry in $IncludeList) {
+                if ($repo.FullName -eq $entry -or $repo.FullName.StartsWith($entry.TrimEnd('\') + '\')) {
+                    $included = $true
+                    break
+                }
+            }
+            if (-not $included) { continue }
+        }
+
         [pscustomobject]@{
             Path = $repo.FullName
         }
@@ -194,6 +243,24 @@ if (-not [string]::IsNullOrWhiteSpace($logDirectoryPath)) {
     New-Item -ItemType Directory -Path $logDirectoryPath -Force | Out-Null
 }
 
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+    $scriptsDirectory = Split-Path -Path $scriptPath -Parent
+    $autoConfigPath = Join-Path -Path $scriptsDirectory -ChildPath "git-repositories\$env:COMPUTERNAME.txt"
+    if (Test-Path -LiteralPath $autoConfigPath -PathType Leaf) {
+        $ConfigPath = $autoConfigPath
+    }
+}
+
+$includeList = $null
+if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
+    $includeList = Get-IncludeList -Path $ConfigPath
+    if ($null -eq $includeList) {
+        Write-Warning "Config file not found: $ConfigPath"
+    } elseif ($includeList.Count -eq 0) {
+        Write-Warning "Config file is empty, no repositories will be pulled: $ConfigPath"
+    }
+}
+
 if ($InstallScheduledTask) {
     $taskRegistered = Register-UserLogonTask `
         -ResolvedRepositoriesRoot $repositoriesRootPath `
@@ -209,12 +276,21 @@ if ($InstallScheduledTask) {
     }
     Write-Host "Repositories root: $repositoriesRootPath"
     Write-Host "Log path: $LogPath"
+    if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
+        Write-Host "Include list: $ConfigPath"
+    } else {
+        Write-Host "Include list: none (all repositories will be pulled)"
+    }
     return
 }
 
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ssK"
 Add-Content -LiteralPath $LogPath -Value ""
 Add-Content -LiteralPath $LogPath -Value "[$timestamp] Starting git pull run under: $repositoriesRootPath"
+
+if ($includeList) {
+    Add-Content -LiteralPath $LogPath -Value "[$timestamp] Include list: $ConfigPath ($($includeList.Count) entries)"
+}
 
 $git = Get-Command git -ErrorAction SilentlyContinue
 if (-not $git) {
@@ -223,7 +299,7 @@ if (-not $git) {
     throw $message
 }
 
-$repositories = @(Get-GitRepositories -Root $repositoriesRootPath | Sort-Object -Property Path -Unique)
+$repositories = @(Get-GitRepositories -Root $repositoriesRootPath -IncludeList $includeList | Sort-Object -Property Path -Unique)
 if ($repositories.Count -eq 0) {
     $message = "No Git repositories found under: $repositoriesRootPath"
     Write-Host $message -ForegroundColor Yellow
@@ -241,7 +317,7 @@ foreach ($repository in $repositories) {
     Write-Host "Pulling $($repository.Path)"
     Add-Content -LiteralPath $LogPath -Value "[$(Get-Date -Format "yyyy-MM-dd HH:mm:ssK")] Pulling $($repository.Path)"
 
-    $output = & git -C $repository.Path @pullArguments 2>&1
+    $output = & git -C $repository.Path @pullArguments
     $exitCode = $LASTEXITCODE
 
     if ($output) {
