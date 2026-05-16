@@ -29,5 +29,5 @@ Use the bundled Python helper for deterministic Terraform and pipeline signal sc
    ## Prioritised Improvements
 
    | Priority | Finding | Effort | Impact |
-   |---|---|---|---|
+   | -------- | ------- | ------ | ------ |
    ```

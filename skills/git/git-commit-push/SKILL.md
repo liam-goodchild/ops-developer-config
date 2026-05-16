@@ -54,4 +54,3 @@ Use the bundled Python helper for deterministic checks, staging, commits, and pu
 ## Testing only
 
 Use `--dry-run` to validate a plan without changing the repository. Use `--no-push` only in temporary test repositories or when the user explicitly asks not to push.
-
