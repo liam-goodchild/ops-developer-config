@@ -3,7 +3,7 @@ name: raise-feature
 description: Raise a feature request issue on a GitHub repository using the standard feature template
 ---
 
-Raise a GitHub feature request issue on a repository. Use the bundled Python helper for deterministic checks and execution. Use the LLM only for judgement: understanding the user's request, expanding terse details into meaningful template prose, deciding whether enough information is present, and confirming the exact issue with the user before creation.
+Raise a GitHub feature request issue on a repository. Use the bundled Python helper for deterministic checks, shared issue template loading, and execution. Use the LLM only for judgement: understanding the user's request, expanding terse details into meaningful template prose, deciding whether enough information is present, and confirming the exact issue with the user before creation.
 
 ## Step 1 — Inspect repository and tooling
 
@@ -17,6 +17,7 @@ Inspect these JSON fields:
 
 - `inferred_repository`: use this if it is correct; otherwise ask for `owner/repo`.
 - `risk_flags`: stop and resolve `repository_not_inferred`, `gh_not_found`, or `gh_not_authenticated` before applying.
+- `issue_template`: the shared template loaded from `.github/.github/ISSUE_TEMPLATE/feature-request.md`. Do not invent or use embedded issue templates.
 - `defaults`: label, assignee, and title prefix used by the helper.
 - `project`: the Sky Haven Project V2 IDs used to set Type to Feature.
 
