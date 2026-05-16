@@ -78,10 +78,6 @@ def load_plan(path: str) -> dict[str, Any]:
     if not isinstance(data, dict): raise SkillError('Plan must be a JSON object')
     return data
 
-def require_approved(plan: dict[str, Any]):
-    if plan.get('approved') is not True: raise SkillError('Plan must include approved=true after explicit user approval')
-
-
 def default_branch(p: Path) -> str:
     cp=git(p,'symbolic-ref','refs/remotes/origin/HEAD')
     if cp.returncode==0 and cp.stdout.strip(): return cp.stdout.strip().replace('refs/remotes/origin/','')
@@ -92,12 +88,12 @@ def inspect(t):
     d=default_branch(root); branches=[x.strip().lstrip('* ').strip() for x in git(root,'branch','--format','%(refname:short)').stdout.splitlines() if x.strip()]
     tags=[x.strip() for x in git(root,'tag').stdout.splitlines() if x.strip()]
     deletable=[b for b in branches if b not in {d,'main','master'}]
-    return {'repo':str(root),'default_branch':d,'local_branches':branches,'local_tags':tags,'deletable_branches':deletable,'deletable_tags':tags,'risk_flags':['destructive_local_delete'] if deletable or tags else [],'plan_shape':{'delete_branches':deletable,'delete_tags':tags,'pull':True,'approved':True}}
+    return {'repo':str(root),'default_branch':d,'local_branches':branches,'local_tags':tags,'deletable_branches':deletable,'deletable_tags':tags,'risk_flags':['destructive_local_delete'] if deletable or tags else [],'plan_shape':{'delete_branches':deletable,'delete_tags':tags,'pull':True}}
 def apply(t, plan_path, dry):
-    p=target_dir(t); root=git_root(p) or p; plan=load_plan(plan_path); require_approved(plan); d=default_branch(root); cmds=[['checkout',d],['fetch','--prune','--prune-tags']]
+    p=target_dir(t); root=git_root(p) or p; plan=load_plan(plan_path); d=default_branch(root); cmds=[['checkout',d],['fetch','--prune','--no-tags']]
     for b in plan.get('delete_branches',[]): cmds.append(['branch','-D',b])
     for tag in plan.get('delete_tags',[]): cmds.append(['tag','-d',tag])
-    if plan.get('pull',True): cmds.append(['pull'])
+    if plan.get('pull',True): cmds.append(['pull','--no-tags'])
     if dry: return {'repo':str(root),'dry_run':True,'would_run':[['git',*c] for c in cmds]}
     results=[]
     for c in cmds:
