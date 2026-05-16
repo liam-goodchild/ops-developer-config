@@ -14,7 +14,7 @@ Refactor a target skill so `SKILL.md` becomes a thin orchestration guide and bun
 2. Run the analyzer from this skill:
 
    ```powershell
-   python "<this-skill-dir>\scripts\pythonize_skill.py" analyze --target "<target-skill-dir>" --json
+   python "<this-skill-dir>\scripts\pythonize-skill-helper.py" analyze --target "<target-skill-dir>" --json
    ```
 
 3. Review the analyzer output and define the boundary:
@@ -25,7 +25,7 @@ Refactor a target skill so `SKILL.md` becomes a thin orchestration guide and bun
 4. If the target skill does not already have an appropriate helper, scaffold one:
 
    ```powershell
-   python "<this-skill-dir>\scripts\pythonize_skill.py" scaffold --target "<target-skill-dir>"
+   python "<this-skill-dir>\scripts\pythonize-skill-helper.py" scaffold --target "<target-skill-dir>"
    ```
 
 5. Implement the target helper script. Prefer this interface:
