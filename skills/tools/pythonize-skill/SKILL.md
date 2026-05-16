@@ -1,85 +1,90 @@
 ---
 name: pythonize-skill
-description: [TODO: Complete and informative explanation of what the skill does and when to use it. Include WHEN to use this skill - specific scenarios, file types, or tasks that trigger it.]
+description: Refactor existing Codex or Claude skills into Python-backed workflows that offload deterministic inspection, validation, parsing, file operations, API/CLI orchestration, and repeatable command sequences to bundled Python scripts while keeping the LLM responsible for judgement, explanations, grouping decisions, commit messages, summaries, reviews, and user-facing trade-offs. Use when asked to automate, script, speed up, reduce token use, or make a target skill more deterministic.
 ---
 
 # Pythonize Skill
 
-## Overview
+Refactor a target skill so `SKILL.md` becomes a thin orchestration guide and bundled Python scripts perform the repeatable work.
 
-[TODO: 1-2 sentences explaining what this skill enables]
+## Default workflow
 
-## Structuring This Skill
+1. Identify the target skill directory. If the user gives only a name, search the central `skills/` tree for a matching folder.
 
-[TODO: Choose the structure that best fits this skill's purpose. Common patterns:
+2. Run the analyzer from this skill:
 
-**1. Workflow-Based** (best for sequential processes)
-- Works well when there are clear step-by-step procedures
-- Example: DOCX skill with "Workflow Decision Tree" -> "Reading" -> "Creating" -> "Editing"
-- Structure: ## Overview -> ## Workflow Decision Tree -> ## Step 1 -> ## Step 2...
+   ```powershell
+   python "<this-skill-dir>\scripts\pythonize_skill.py" analyze --target "<target-skill-dir>" --json
+   ```
 
-**2. Task-Based** (best for tool collections)
-- Works well when the skill offers different operations/capabilities
-- Example: PDF skill with "Quick Start" -> "Merge PDFs" -> "Split PDFs" -> "Extract Text"
-- Structure: ## Overview -> ## Quick Start -> ## Task Category 1 -> ## Task Category 2...
+3. Review the analyzer output and define the boundary:
 
-**3. Reference/Guidelines** (best for standards or specifications)
-- Works well for brand guidelines, coding standards, or requirements
-- Example: Brand styling with "Brand Guidelines" -> "Colors" -> "Typography" -> "Features"
-- Structure: ## Overview -> ## Guidelines -> ## Specifications -> ## Usage...
+   - Move deterministic work to Python: status checks, parsing, validation, grouping heuristics, file discovery, command orchestration, JSON/YAML manipulation, API/CLI wrappers, idempotent writes, and safety gates.
+   - Keep judgement in the LLM: user intent, risk acceptance, prose, commit messages, PR descriptions, code review findings, study explanations, architectural trade-offs, and final summaries.
 
-**4. Capabilities-Based** (best for integrated systems)
-- Works well when the skill provides multiple interrelated features
-- Example: Product Management with "Core Capabilities" -> numbered capability list
-- Structure: ## Overview -> ## Core Capabilities -> ### 1. Feature -> ### 2. Feature...
+4. If the target skill does not already have an appropriate helper, scaffold one:
 
-Patterns can be mixed and matched as needed. Most skills combine patterns (e.g., start with task-based, add workflow for complex operations).
+   ```powershell
+   python "<this-skill-dir>\scripts\pythonize_skill.py" scaffold --target "<target-skill-dir>"
+   ```
 
-Delete this entire "Structuring This Skill" section when done - it's just guidance.]
+5. Implement the target helper script. Prefer this interface:
 
-## [TODO: Replace with the first main section based on chosen structure]
+   - `inspect`: side-effect-free; returns compact JSON for the LLM to judge.
+   - `plan`: optional; creates or validates a structured plan file.
+   - `apply`: performs side effects from an explicit plan; supports `--dry-run` when practical.
 
-[TODO: Add content here. See examples in existing skills:
-- Code samples for technical skills
-- Decision trees for complex workflows
-- Concrete examples with realistic user requests
-- References to scripts/templates/references as needed]
+6. Update the target `SKILL.md` so it tells future agents:
 
-## Resources (optional)
+   - which helper command to run first;
+   - which JSON fields to inspect;
+   - when to stop or ask the user;
+   - what the LLM must still decide;
+   - what plan JSON shape to create, if any;
+   - how to run the side-effecting command.
 
-Create only the resource directories this skill actually needs. Delete this section if no resources are required.
+7. Test before finishing:
 
-### scripts/
-Executable code (Python/Bash/etc.) that can be run directly to perform specific operations.
+   ```powershell
+   python -m py_compile "<target-skill-dir>\scripts\<helper>.py"
+   python "<skill-creator-dir>\scripts\quick_validate.py" "<target-skill-dir>"
+   ```
 
-**Examples from other skills:**
-- PDF skill: `fill_fillable_fields.py`, `extract_form_field_info.py` - utilities for PDF manipulation
-- DOCX skill: `document.py`, `utilities.py` - Python modules for document processing
+   Also run representative helper tests against a temporary or safe fixture. Do not test destructive operations against live resources.
 
-**Appropriate for:** Python scripts, shell scripts, or any executable code that performs automation, data processing, or specific operations.
+## Script design rules
 
-**Note:** Scripts may be executed without loading into context, but can still be read by Codex for patching or environment adjustments.
+- Use Python standard library unless a dependency is already required by the target skill.
+- Emit compact JSON by default. Do not print full diffs, large logs, secrets, or whole files.
+- Write large artifacts to files and return paths in JSON.
+- Validate repository-relative and filesystem paths before writing, moving, or deleting.
+- Make `inspect` read-only and safe to run repeatedly.
+- Require an explicit plan file for multi-step side effects.
+- Keep script output stable so both Codex and Claude can use it.
+- Fail closed with clear non-zero exits and machine-readable errors.
+- Prefer idempotent operations and dry-run support.
 
-### references/
-Documentation and reference material intended to be loaded into context to inform Codex's process and thinking.
+## Target `SKILL.md` pattern
 
-**Examples from other skills:**
-- Product management: `communication.md`, `context_building.md` - detailed workflow guides
-- BigQuery: API reference documentation and query examples
-- Finance: Schema documentation, company policies
+Keep target skills short. A good Python-backed skill usually contains:
 
-**Appropriate for:** In-depth documentation, API references, database schemas, comprehensive guides, or any detailed information that Codex should reference while working.
+```markdown
+Use the bundled Python helper for deterministic checks and execution. Use the LLM only for judgement: <specific judgement tasks>.
 
-### assets/
-Files not intended to be loaded into context, but rather used within the output Codex produces.
+1. Run inspect:
+   ```powershell
+   python "<skill-dir>\scripts\<helper>.py" inspect --target "<target>" --json
+   ```
 
-**Examples from other skills:**
-- Brand styling: PowerPoint template files (.pptx), logo files
-- Frontend builder: HTML/React boilerplate project directories
-- Typography: Font files (.ttf, .woff2)
+2. Stop or ask if `<risk field>` is present.
+3. Create `<plan>.json` outside the target repo/folder.
+4. Run apply:
+   ```powershell
+   python "<skill-dir>\scripts\<helper>.py" apply --target "<target>" --plan "<plan>.json"
+   ```
+5. Report concise results.
+```
 
-**Appropriate for:** Templates, boilerplate code, document templates, images, icons, fonts, or any files meant to be copied or used in the final output.
+## When not to pythonize heavily
 
----
-
-**Not every skill requires all three types of resources.**
+Do not force a script when the skill is mostly judgement, teaching, creative writing, or one-off reasoning. In those cases, only add small validators or artifact extractors if they remove repeated mechanical work.
