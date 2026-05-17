@@ -1,0 +1,4 @@
+interface:
+  display_name: "Humanizer"
+  short_description: "Rewrite AI-sounding text into natural human prose."
+  default_prompt: "Humanize this text while preserving the meaning and intended voice."
