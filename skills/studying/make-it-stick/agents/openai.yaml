@@ -1,6 +1,0 @@
-﻿interface:
-  display_name: "Make It Stick"
-  short_description: "Quiz Markdown with durable recall."
-  default_prompt: "Use $make-it-stick to test me on this Markdown file with retrieval practice and mixed question types."
-policy:
-  allow_implicit_invocation: true

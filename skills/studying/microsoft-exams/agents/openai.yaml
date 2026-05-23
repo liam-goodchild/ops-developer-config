@@ -1,4 +1,0 @@
-interface:
-  display_name: "Microsoft Exams"
-  short_description: "Turn Microsoft Learn modules into conceptual exam knowledge."
-  default_prompt: "Use the Microsoft Exams skill to study this Microsoft Learn module URL by extracting themes, mental models, and exam-relevant reasoning rather than memorizing bullet points."
