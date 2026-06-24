@@ -1,4 +1,4 @@
-# AGENTS.md
+﻿# AGENTS.md
 
 This file provides guidance to Codex CLI and other AI coding agents when working with code in this repository.
 
@@ -14,7 +14,7 @@ Tracked in version control (enforced by `.gitignore`):
 | ------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------- |
 | `skills/`                             | Claude Code + Codex | Shared skill source; linked into `~/.claude/skills` and `~/.codex/skills/<name>`               |
 | `claude/settings.json`                | Claude Code         | Global tool permissions and model config                                                       |
-| `CLAUDE.md`                           | Claude Code         | Global Claude system instructions                                                              |
+| `claude/CLAUDE.md`                    | Claude Code         | Global Claude instructions installed to `~/.claude/CLAUDE.md`                                  |
 | `git/hooks/`                          | Git                 | Global git hooks (pre-commit, etc.)                                                            |
 | `codex/instructions.md`               | Codex CLI           | System prompt / custom instructions                                                            |
 | `codex/config.toml`                   | Codex CLI           | Model, reasoning effort, options                                                               |
@@ -24,7 +24,7 @@ Tracked in version control (enforced by `.gitignore`):
 | `git/gitignore_global`                | Git                 | Global gitignore patterns                                                                      |
 | `scripts/Install-DeveloperConfig.ps1` | All                 | One-shot link creation for a new Windows machine; can install a per-user logon task for itself |
 | `scripts/Update-GitRepositories.ps1`  | Git                 | Pulls all repositories under a configurable root; can install a per-user logon task for itself |
-| `docs/`                               | —                   | Per-tool setup documentation                                                                   |
+| `docs/`                               | â€”                   | Per-tool setup documentation                                                                   |
 
 Everything else in each tool's config directory (sessions, history, cache,
 credentials, etc.) is excluded.
@@ -37,7 +37,7 @@ Each skill lives in `skills/<name>/SKILL.md` and is a markdown file with YAML fr
 ---
 name: skill-name
 description: shown in the skill picker
-disable-model-invocation: true # optional — runs without a model call (pure bash)
+disable-model-invocation: true # optional â€” runs without a model call (pure bash)
 ---
 ```
 
@@ -114,7 +114,7 @@ Naming schema: `{verb}-{subject}[-{qualifier}]`
 
 Create `skills/<name>/SKILL.md` with the frontmatter and prompt body, then commit and push.
 
-Existing skill edits are immediately available on linked machines after a `git pull`. When adding a new top-level skill folder, re-run `.\scripts\Install-DeveloperConfig.ps1` so Codex gets a new per-skill junction under `~/.codex/skills/<name>`. Claude uses a whole-directory `~/.claude/skills` junction and sees new folders immediately.
+Existing skill edits are immediately available on linked machines after a `git pull` when junctions or symlinks are available. When the installer falls back to copies, re-run `.\scripts\Install-DeveloperConfig.ps1` after pulling to refresh them. When adding a new skill folder, re-run the installer so both Claude and Codex get per-skill entries under `~/.claude/skills/<name>` and `~/.codex/skills/<name>`.
 
 ### Setting up a new device
 
@@ -126,11 +126,11 @@ cd "C:\Local Files\Repositories\Sky Haven\ops-developer-config"
 .\scripts\Install-DeveloperConfig.ps1
 ```
 
-The script creates junctions for directories and file symlinks where possible.
+The script creates junctions for skill directories and file symlinks where possible. The global Claude instructions come from `claude/CLAUDE.md`; root-level `CLAUDE.md` remains repo-local documentation for this configuration repository.
 Codex skills are linked under `~/.codex/skills`; the legacy `~/.agents/skills`
 path is cleaned up only when it is the old junction to this repo.
 On domain-joined machines where Group Policy blocks symlink creation, it falls
-back to file copies and prints a reminder — run `.\scripts\Install-DeveloperConfig.ps1` again
+back to file copies and prints a reminder â€” run `.\scripts\Install-DeveloperConfig.ps1` again
 after each `git pull` to refresh the copies. An Administrator shell bypasses
 this restriction and produces true symlinks.
 
@@ -185,16 +185,16 @@ The `gh` CLI is not on the bash `PATH` by default. Use the full path:
 
 ## claude/settings.json
 
-Defines globally allowed tools. When adding new MCP tool permissions, add them to the `allow` array. The `deny` array is currently empty — prefer allowlist-only control.
+Defines globally allowed tools. When adding new MCP tool permissions, add them to the `allow` array. The `deny` array is currently empty â€” prefer allowlist-only control.
 
-Plugins (marketplace and official) are configured under `enabledPlugins` — these are not synced via git and must be installed per-device.
+Plugins (marketplace and official) are configured under `enabledPlugins` â€” these are not synced via git and must be installed per-device.
 
 ## git/hooks/
 
 Global git hooks wired via `git config --global core.hooksPath`. Applied to every repo on the machine. The `pre-commit` hook auto-formats staged files before each commit:
 
-- **`.tf` / `.tfvars`** — runs `terraform fmt -recursive`
-- **`.yaml` / `.yml` / `.json`** — runs `prettier --write`, using `.github/linters/.prettierrc.json` if present
+- **`.tf` / `.tfvars`** â€” runs `terraform fmt -recursive`
+- **`.yaml` / `.yml` / `.json`** â€” runs `prettier --write`, using `.github/linters/.prettierrc.json` if present
 
 Both formatters re-stage the files they modify. Formatting errors are non-fatal (the commit proceeds).
 
@@ -205,3 +205,4 @@ These conventions apply across all IaC and scripting work in connected repositor
 - **Terraform**: 2-space indent, explicit provider versions, use `for_each` instead of `count` for resource toggling
 - **Shell**: Bash with `set -euo pipefail`; quote all variable expansions; prefer idempotent operations
 - **YAML / JSON**: 2-space indent, no trailing whitespace
+

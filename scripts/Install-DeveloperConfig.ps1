@@ -627,7 +627,7 @@ Remove-LegacyAgentsSkillsJunction "$env:USERPROFILE\.agents\skills" "$Repo\skill
 
 Write-Host "`nClaude" -ForegroundColor Cyan
 New-Junction "$claude\docs" "$Repo\docs"
-New-Symlink "$claude\CLAUDE.md" "$Repo\CLAUDE.md"
+New-Symlink "$claude\CLAUDE.md" "$Repo\claude\CLAUDE.md"
 Merge-ClaudeSettings "$Repo\claude\settings.json" "$claude\settings.json"
 
 # -- Codex -----------------------------------------------------------------
